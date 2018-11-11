@@ -83,20 +83,56 @@ class cinema_ingresso():
 		self.parent_xml = etree.SubElement(root, 'cinema')
 		etree.SubElement(self.parent_xml, 'shopping').text = shoppings[cinema]
 
-		self.rooms = {}
+		self.rooms = None
+		self.rooms1 = None
+
 		self.cinema = cinema
 
 		dias = [datetime.today()+timedelta(days=1)]
-		if datetime.today().weekday()==5:
+		if datetime.today().weekday()==4:
 			dias.append(datetime.today()+timedelta(days=2))
 
 		for dia in dias:
-			self.check(dia)
-			self.to_xml()
+			if not self.rooms:
+				self.rooms = {}
+				output = self.rooms
+			else:
+				self.rooms1 = {}
+				output = self.rooms1
+
+			self.check(dia, output)
+
+		if self.rooms1:
+			self.weekend()
+
+		self.to_xml()
+
+	def weekend(self):
+		rooms_ = {k:self.rooms[k] for k in self.rooms}
+		self.rooms = {}
+
+		for room in rooms_:
+			self.rooms[room] = {}
+			movies = rooms_[room]
+			for movie in movies:
+				h_sab = movies[movie]
+
+				if movie in self.rooms1[room]:
+					h_dom = self.rooms1[room][movie]
+				else: h_dom = []
+
+				on_sab = [el+'&#185;' for el in h_sab if el not in h_dom]
+				on_dom = [el+'&#178;' for el in h_dom if el not in h_sab]
+				both = [el for el in h_sab if el in h_dom]
+
+				horarios = set(on_sab+on_dom+both)
+
+				self.rooms[room][movie] = horarios
 
 
-	def check(self, dia):
+	def check(self, dia, output):
 		self.type = 'ingresso'
+
 		api = 'https://api-content.ingresso.com/v0//sessions/city/{cidade}/theater/{cinema}?partnership=&date='.format
 
 		cinemas = {
@@ -127,8 +163,8 @@ class cinema_ingresso():
 					in_title = movie['title']
 					for room in movie['rooms']:
 						sala = room['name']
-						if not sala in self.rooms:
-							self.rooms[sala] = {}
+						if not sala in output:
+							output[sala] = {}
 
 						for session in room['sessions']:
 							horario = session['date']['hour']
@@ -141,10 +177,10 @@ class cinema_ingresso():
 							if 'Dublado' in session['type']:
 								horario += 'D'
 
-							if not title in self.rooms[sala].keys():
-								self.rooms[sala][title]=[]
+							if not title in output[sala].keys():
+								output[sala][title]=[]
 
-							self.rooms[sala][title].append(horario)
+							output[sala][title].append(horario)
 
 	def to_xml(self):
 		for room in sorted(self.rooms):
@@ -163,16 +199,16 @@ class cinema_ingresso():
 
 
 class cinema_arcoplex(cinema_ingresso):
-	def check(self, dia):
+	def check(self, dia, output):
 		self.type = 'arcoplex'
 
 		if datetime.today().weekday() == 2:
-			self.check_back(dia)
+			self.check_back(dia, output)
 		else:
-			self.check_front(dia)
+			self.check_front(dia, output)
 
 
-	def check_front(self, dia):
+	def check_front(self, dia, output):
 		dict_arcoplex = {
 		'itaguacu':'http://arcoplex.com.br/filme/?lang=003',
 		'via catarina':'http://arcoplex.com.br/filme/?lang=055'
@@ -185,16 +221,16 @@ class cinema_arcoplex(cinema_ingresso):
 
 		for filme in filmes:
 			global possibilidades, dia_, horarios
-
 			title = filme.find('h2','titulo-sub').text.title()
+
 			horarios = filme.find('table','horarios-filmes').findAll('tr')
 
 			dia_ = dia.strftime(format='%d/%m/%Y')
 			if_dia = re.compile(dia_).search
 			possibilidades = [el for el in horarios if if_dia(el.td.text)]
 
-			if len(possibilidades) > 0:
-				sessoes = [el.text for el in possibilidades[0].findAll('td')]
+			for sessao in possibilidades:
+				sessoes = [el.text for el in sessao.findAll('td')]
 				horario = sessoes[1].split(' ')
 				sala = sessoes[2]
 				sala = re.sub('.+ (\d)',r'\1', sala)
@@ -205,17 +241,14 @@ class cinema_arcoplex(cinema_ingresso):
 				if sessoes[5]=='3D':
 					title += ' 3D'
 
-				if not sala in self.rooms:
-					self.rooms[sala] = {}
+				if not sala in output:
+					output[sala] = {}
 
-				if not title in self.rooms[sala]:
-					self.rooms[sala][title] = []
-
-				self.rooms[sala][title].append(', '.join(horario[1:]))
+				output[sala][title] = horario[1:]
 
 
 
-	def check_back(self, dia):
+	def check_back(self, dia, output):
 		dict_arcoplex = {
 		'itaguacu':'https://webcinearcoplex2.com/compra_ingresso_online/?filial=003',
 		'via catarina':'https://webcinearcoplex2.com/compra_ingresso_online/?filial=055'
@@ -228,6 +261,9 @@ class cinema_arcoplex(cinema_ingresso):
 
 		filmes = self.soup.find('div',{'id':'tabpromo1'}).findAll('a')
 
+		global filmes_checar
+		filmes_checar = []
+
 		for filme in filmes:
 			url_filme = base+filme['href']
 
@@ -235,6 +271,8 @@ class cinema_arcoplex(cinema_ingresso):
 			soup_filme = make_soup(url_filme)
 			title_raw = soup_filme.find('h2','titulo-filme').text
 			title, = re.search('\n +(.+) ?- ?\dD.\n', title_raw).groups().title()
+
+			filmes_checar.append(title)
 
 			if re.search('3D.\n', title_raw): title+=' 3D'
 			if re.search('D\n', title_raw): dublado = True
@@ -265,10 +303,11 @@ class cinema_arcoplex(cinema_ingresso):
 					self.rooms[sala][title].append(horario)
 
 
-			    #TODO agora o que eu preciso é construir o dicionario rooms
-
-
-
+"""
+Fazer a função do final de semana
+	- Função para checar, usando list-comprehension
+	- Aplicar ¹ e ²
+"""
 
 
 
@@ -299,16 +338,14 @@ def master(debug = False):
 	self = cinema_arcoplex('itaguacu')
 	self = cinema_arcoplex('via catarina')
 
+##self = cinema_ingresso('cinemark')
+
 ##self = cinema_arcoplex('itaguacu')
 
-"""
-- Paradigma
-- Badesc
-
-- FINAL DE SEMANA!!!1!
-"""
 
 if __name__ == '__main__':
 	master()
 	view()
 	write()
+	if datetime.today().weekday() == 2:
+		print 'Cheque se estes filmes estão corretos: '+', '.join(filmes_checar)
