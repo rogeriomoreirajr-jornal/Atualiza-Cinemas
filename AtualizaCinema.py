@@ -16,6 +16,7 @@ import unicodedata
 import os
 from time import sleep
 import locale
+import sys
 
 os.chdir('\\\\172.20.0.45\\jornalismo novo\\# Rob\xf4s\Cinemas\# script')
 os.environ["REQUESTS_CA_BUNDLE"] = r"cacert.pem"
@@ -31,7 +32,8 @@ proxy = ({
 
 
 
-def view(): print etree.tostring(root, pretty_print = True)
+def view():	print output
+
 def reset():
 	global root
 	root = etree.Element("Root")
@@ -78,7 +80,7 @@ shoppings = {
 
 class cinema_ingresso():
 	def __init__(self, cinema):
-		print 'Checando {}'.format(cinema)
+		print 'Checando {}... '.format(cinema),
 
 		self.parent_xml = etree.SubElement(root, 'cinema')
 		etree.SubElement(self.parent_xml, 'shopping').text = shoppings[cinema]
@@ -121,8 +123,14 @@ class cinema_ingresso():
 					h_dom = self.rooms1[room][movie]
 				else: h_dom = []
 
-				on_sab = [el+'&#185;' for el in h_sab if el not in h_dom]
-				on_dom = [el+'&#178;' for el in h_dom if el not in h_sab]
+				def sab(string):
+					return re.sub('(\d\d:\d\d)',r'\1'+u'&#185;', string)
+				on_sab = [sab(el) for el in h_sab if el not in h_dom]
+
+				def dom(string):
+					return re.sub('(\d\d:\d\d)',r'\1'+u'&#178;', string)
+				on_dom = [dom(el) for el in h_dom if el not in h_sab]
+
 				both = [el for el in h_sab if el in h_dom]
 
 				horarios = set(on_sab+on_dom+both)
@@ -196,6 +204,8 @@ class cinema_ingresso():
 				parent_filme = etree.SubElement(parent_room, 'filme')
 				etree.SubElement(parent_filme, 'titulo').text = filme
 				etree.SubElement(parent_filme, 'horarios').text = ', '.join(self.rooms[room][filme])
+
+		print 'ok'
 
 
 class cinema_arcoplex(cinema_ingresso):
@@ -315,12 +325,19 @@ Fazer a função do final de semana
 def debug():
 	master(debug = True)
 
-def write(filename=''):
-   	output = etree.tostring(root, pretty_print = True)
+
+def clean():
+	global output
+
+	output = etree.tostring(root, pretty_print = True)
 
 	output = re.sub('(\d)\:(\d)',r'\1h\2',output)
-##	output = re.sub('^, ','',output)
+	output = re.sub('&#195;&#167;','&#231;',output)
+	output = re.sub('h00','h',output)
+	output = re.sub('&amp;','&', output)
 
+
+def write(filename=''):
 	filename='horarios'
 	open('{}.xml'.format(filename), 'w').write(output)
 
@@ -333,19 +350,20 @@ cinemas = ['cinemark','cineshow','cinesystem','cinepolis']
 def master(debug = False):
 	global self
 	for cinema in cinemas:
-		self = cinema_ingresso(cinema)
+		try:
+			self = cinema_ingresso(cinema)
+		except: print 'erro'
 
-	self = cinema_arcoplex('itaguacu')
-	self = cinema_arcoplex('via catarina')
-
-##self = cinema_ingresso('cinemark')
-
-##self = cinema_arcoplex('itaguacu')
+	for cinema in ['itaguacu', 'via catarina']:
+		try:
+			self = cinema_arcoplex(cinema)
+		except: print 'erro'
 
 
 if __name__ == '__main__':
 	master()
-	view()
+	clean()
+##	view()
 	write()
 	if datetime.today().weekday() == 2:
 		print 'Cheque se estes filmes estão corretos: '+', '.join(filmes_checar)
