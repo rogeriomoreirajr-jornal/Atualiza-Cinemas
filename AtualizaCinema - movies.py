@@ -43,9 +43,17 @@ def write(output):
 	print "\n\nTudo certo. Abra os arquivos para atualizá-los."
 
 def title_br(string):
-	temp = re.sub(' D([aeiou]s?) ',r' d\1 ', string.title())
-	temp = re.sub(' ([AEIOU]s?) ',r' \1 '.lower(), temp)
-	return temp
+	string_ = re.sub(' D([aeiou]s?) ',r' d\1 ', string.title())
+	string_l = string_.split(' ')
+
+	excecoes = '(Uma?|Of|[AEIOU]s?|N[ao]s?|Por|)$'
+
+	for palavra in string_l[1:]:
+		i = string_l.index(palavra)
+		if re.match(excecoes, palavra):
+			string_l[i] = palavra.lower()
+
+	return ' '.join(string_l)
 
 def make_soup(url):
     html = s.get(url, proxies=proxy, headers={'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/38.0.2125.111 Safari/537.36'})
@@ -86,6 +94,7 @@ class cinema_ingresso():
 ##		self.rooms1 = None
 
 		self.cinema = cinema
+		self.shopping = shoppings[cinema]
 
 		dias = [datetime.today()+timedelta(days=1)]
 		if datetime.today().weekday()==4:
@@ -184,10 +193,13 @@ class cinema_ingresso():
 							if 'Dublado' in session['type']:
 								horario += 'D'
 
-							if not sala in output[title]:
-								output[title][sala]=[]
+							if not self.shopping in output[title]:
+								output[title][self.shopping]= {}
 
-							output[title][sala].append(horario)
+							if not sala in output[title][self.shopping]:
+								output[title][self.shopping][sala] = []
+
+							output[title][self.shopping][sala].append(horario)
 
 
 class cinema_arcoplex(cinema_ingresso):
@@ -227,7 +239,7 @@ class cinema_arcoplex(cinema_ingresso):
 				sala_ = sessoes[2]
 				sala_ = re.sub('.+ (\d)',r'\1', sala_)
 
-				sala = ' '.join([self.cinema.title(), sala_])
+				sala = ' '.join(['Arcoplex', sala_])
 
 				if sessoes[3]=='DUB':
 					horarios = [el+'D' for el in horarios]
@@ -235,10 +247,13 @@ class cinema_arcoplex(cinema_ingresso):
 				if sessoes[5]=='3D':
 					title += ' 3D'
 
-				if not title in output:
-					output[title] = {}
+				if not self.shopping in output[title]:
+					output[title][self.shopping]= {}
 
-				output[title][sala] = horario[1:]
+				if not sala in output[title][self.shopping]:
+					output[title][self.shopping][sala] = []
+
+				output[title][self.shopping][sala] = horario[1:]
 
 
 
@@ -313,16 +328,18 @@ def to_xml():
 	parent_xml = etree.SubElement(root, 'filmes')
 	for movie in sorted(movies):
 		parent_movie = etree.SubElement(parent_xml, 'filme')
-		etree.SubElement(parent_movie, 'titulo').text = movie
+		etree.SubElement(parent_movie, 'titulo').text = title_br(movie)
 
-		sessoes = []
 
-		for room in sorted(movies[movie]):
-##			parent_room = etree.SubElement(parent_sessoes, 'item')
-			horarios = ', '.join(sorted(movies[movie][room]))
-			sessoes.append('{}: {}'.format(room, horarios))
+		for shopping in sorted(movies[movie]):
+			parent_shopping = etree.SubElement(parent_movie, 'cinema')
+			etree.SubElement(parent_shopping, 'shopping').text = shopping
+			sessoes = []
+			for sala in sorted(movies[movie][shopping]):
+				horarios = ', '.join(sorted(movies[movie][shopping][sala]))
+				sessoes.append('{}\t{}'.format(sala, horarios))
 
-		etree.SubElement(parent_movie, 'sessao').text = '\n'.join(sessoes)
+			etree.SubElement(parent_shopping, 'sessao').text = '\n'.join(sessoes)
 
 
 def clean():
