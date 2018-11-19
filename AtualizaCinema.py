@@ -94,6 +94,14 @@ class cinema_ingresso():
 		if datetime.today().weekday()==4:
 			dias.append(datetime.today()+timedelta(days=2))
 
+##		Adiantar o final de semana
+##		dias = [datetime.today()+timedelta(days=4)]
+##		if datetime.today().weekday()==3:
+##			dias.append(datetime.today()+timedelta(days=3))
+
+
+		global dia
+
 		for dia in dias:
 			if not self.rooms:
 				self.rooms = {}
@@ -110,6 +118,8 @@ class cinema_ingresso():
 		self.to_xml()
 
 	def weekend(self):
+		print 'final de semana',
+
 		rooms_ = {k:self.rooms[k] for k in self.rooms}
 		self.rooms = {}
 
@@ -203,7 +213,9 @@ class cinema_ingresso():
 			for filme in self.rooms[room]:
 				parent_filme = etree.SubElement(parent_room, 'filme')
 				etree.SubElement(parent_filme, 'titulo').text = filme
-				etree.SubElement(parent_filme, 'horarios').text = ', '.join(self.rooms[room][filme])
+
+				horarios = sorted([el for el in self.rooms[room][filme] if el != ''])
+				etree.SubElement(parent_filme, 'horarios').text = ', '.join(horarios)
 
 		print 'ok'
 
@@ -242,11 +254,10 @@ class cinema_arcoplex(cinema_ingresso):
 			for sessao in possibilidades:
 				sessoes = [el.text for el in sessao.findAll('td')]
 				horario = sessoes[1].split(' ')
-				sala = sessoes[2]
-				sala = re.sub('.+ (\d)',r'\1', sala)
+				sala = re.sub('.+ (\d)',r'\1', sessoes[2])
 
-				if sessoes[3]=='DUB':
-					horarios = [el+'D' for el in horarios]
+				if sessoes[3]=='Dub':
+					horario = [el+'D' for el in horario if el != '']
 
 				if sessoes[5]=='3D':
 					title += ' 3D'
@@ -254,7 +265,10 @@ class cinema_arcoplex(cinema_ingresso):
 				if not sala in output:
 					output[sala] = {}
 
-				output[sala][title] = horario[1:]
+				if not title in output[sala]:
+					output[sala][title] = horario
+				else:
+					output[sala][title].extend(horario)
 
 
 
@@ -280,9 +294,12 @@ class cinema_arcoplex(cinema_ingresso):
 			global soup_filme, if_dia, dia_
 			soup_filme = make_soup(url_filme)
 			title_raw = soup_filme.find('h2','titulo-filme').text
-			title, = re.search('\n +(.+) ?- ?\dD.\n', title_raw).groups().title()
+			title, = re.search('\n +(.+) ?- ?\dD.\n', title_raw).groups()
 
-			filmes_checar.append(title)
+			title = title.title()
+
+			if re.search('\,', title):
+				filmes_checar.append(title)
 
 			if re.search('3D.\n', title_raw): title+=' 3D'
 			if re.search('D\n', title_raw): dublado = True
@@ -359,11 +376,16 @@ def master(debug = False):
 			self = cinema_arcoplex(cinema)
 		except: print 'erro'
 
+##self = cinema_arcoplex('itaguacu')
+##filmes = self.soup.findAll('div','lista-filmes-loop-content')
+##filme =
+
 
 if __name__ == '__main__':
 	master()
 	clean()
 ##	view()
-	write()
 	if datetime.today().weekday() == 2:
-		print 'Cheque se estes filmes estão corretos: '+', '.join(filmes_checar)
+		print u'Cheque se estes filmes estão corretos: '+', '.join(filmes_checar)
+
+	write()
